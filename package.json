@@ -1,0 +1,20 @@
+{
+  "name": "avantis-tally",
+  "version": "1.0.0",
+  "description": "Allows you to connect tally lights to a avantis sound console to make it visible weather a microphone is on or off.",
+  "homepage": "https://github.com/haydan64/avantis-tally#readme",
+  "bugs": {
+    "url": "https://github.com/haydan64/avantis-tally/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haydan64/avantis-tally.git"
+  },
+  "license": "ISC",
+  "author": "Haydan Fisher",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
