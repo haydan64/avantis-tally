@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Avantis Tally</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Avantis Tally</h1>
+        <p>Avantis TCP/IP MIDI to WebSocket tally bridge</p>
+      </div>
+      <div class="status-wrap">
+        <span id="console-status" data-connected="false">Disconnected</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>System Status</h2>
+        <div class="meta-grid">
+          <div>
+            <span class="label">Console</span>
+            <span id="console-summary">Not configured</span>
+          </div>
+          <div>
+            <span class="label">MIDI Base Channel</span>
+            <span id="base-channel">12</span>
+          </div>
+          <div>
+            <span class="label">WebSocket Server</span>
+            <span id="ws-summary">Port 19188</span>
+          </div>
+          <div>
+            <span class="label">Connected Devices</span>
+            <span id="device-count">0</span>
+          </div>
+        </div>
+        <p id="error-text" class="error"></p>
+        <div class="row buttons">
+          <button id="disconnect-button">Disconnect Console</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Tally Lights</h2>
+          <button id="add-tally">Add Tally Light</button>
+        </div>
+        <ul id="tally-list" class="tally-list"></ul>
+      </section>
+    </main>
+
+    <dialog id="console-modal">
+      <form id="console-form" method="dialog">
+        <h3>Console Connection</h3>
+        <label>
+          Avantis Address / Hostname
+          <input name="address" type="text" placeholder="192.168.1.100" required />
+        </label>
+        <label>
+          TCP Port
+          <input name="port" type="number" min="1" max="65535" value="51325" required />
+        </label>
+        <label>
+          Base MIDI Channel (N)
+          <input name="baseMidiChannel" type="number" min="1" max="12" value="12" required />
+        </label>
+        <menu>
+          <button id="console-cancel">Cancel</button>
+          <button type="submit">Save & Connect</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="tally-connection-modal">
+      <form id="tally-connection-form" method="dialog">
+        <h3>Tally Connection Settings</h3>
+        <label>
+          Proxy Address (optional)
+          <input name="proxyAddress" type="text" placeholder="leave blank to use console address" />
+        </label>
+        <label>
+          WiFi SSID
+          <input name="wifiSsid" type="text" placeholder="Your WiFi network name" />
+        </label>
+        <label>
+          WiFi Password
+          <input name="wifiPassword" type="password" placeholder="Your WiFi password" />
+        </label>
+        <menu>
+          <button id="tally-connection-cancel">Cancel</button>
+          <button type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="tally-editor">
+      <form id="editor-form" method="dialog">
+        <h3 id="editor-title">Add Tally Light</h3>
+        <input type="hidden" name="id" />
+
+        <label>
+          Name
+          <input name="name" type="text" required />
+        </label>
+
+        <label>
+          Tally Device
+          <select name="deviceId" id="device-select"></select>
+        </label>
+
+        <label>
+          Channel Type
+          <select name="channelType" id="channel-type" required></select>
+        </label>
+
+        <label>
+          Channel
+          <select name="channelIndex" id="channel-index" required></select>
+        </label>
+
+        <label>
+          Active Threshold (%)
+          <input name="activeThresholdPercent" type="number" min="0" max="100" step="1" value="0" required />
+        </label>
+
+        <menu>
+          <button id="editor-cancel">Cancel</button>
+          <button id="editor-delete" hidden>Forget</button>
+          <button id="editor-sync" hidden title="Sends tally connection settings to the selected tally device.">Sync Proxy</button>
+          <button type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>
