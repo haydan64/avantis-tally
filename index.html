@@ -48,11 +48,26 @@
       <section class="panel">
         <div class="panel-header">
           <h2>Tally Lights</h2>
-          <button id="add-tally">Add Tally Light</button>
+          <div class="actions-row">
+            <button id="add-tally">Add Tally Light</button>
+            <button id="sync-tallies">Sync Tally Lights</button>
+          </div>
         </div>
         <ul id="tally-list" class="tally-list"></ul>
       </section>
     </main>
+
+    <dialog id="sync-modal">
+      <form id="sync-form" method="dialog">
+        <h3>Sync Tally Lights</h3>
+        <p class="sync-note">Detected beacon devices are listed below. Add creates a new tally after OKAY. Sync updates connection settings for an existing tally.</p>
+        <div id="sync-device-list" class="sync-device-list"></div>
+        <menu>
+          <button id="sync-rescan" value="rescan">Rescan</button>
+          <button id="sync-close">Close</button>
+        </menu>
+      </form>
+    </dialog>
 
     <dialog id="console-modal">
       <form id="console-form" method="dialog">
@@ -98,9 +113,32 @@
       </form>
     </dialog>
 
+    <dialog id="tally-colors-modal">
+      <form id="tally-colors-form" method="dialog">
+        <h3>Tally Color Settings</h3>
+        <label>
+          Active
+          <input name="active" type="color" value="#ff0000" required />
+        </label>
+        <label>
+          Below Threshold
+          <input name="belowThreshold" type="color" value="#00ff00" required />
+        </label>
+        <label>
+          Muted
+          <input name="muted" type="color" value="#00008b" required />
+        </label>
+        <menu>
+          <button id="tally-colors-cancel">Cancel</button>
+          <button type="submit">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="tally-editor">
       <form id="editor-form" method="dialog">
         <h3 id="editor-title">Add Tally Light</h3>
+        <p id="editor-mac" class="editor-subtitle" hidden></p>
         <input type="hidden" name="id" />
 
         <label>
@@ -108,9 +146,9 @@
           <input name="name" type="text" required />
         </label>
 
-        <label>
+        <label id="device-field">
           Tally Device
-          <select name="deviceId" id="device-select"></select>
+          <select name="deviceId" id="device-select" required></select>
         </label>
 
         <label>
@@ -125,13 +163,12 @@
 
         <label>
           Active Threshold (%)
-          <input name="activeThresholdPercent" type="number" min="0" max="100" step="1" value="0" required />
+          <input name="activeThresholdPercent" type="number" min="0" max="100" step="1" value="5" required />
         </label>
 
         <menu>
           <button id="editor-cancel">Cancel</button>
           <button id="editor-delete" hidden>Forget</button>
-          <button id="editor-sync" hidden title="Sends tally connection settings to the selected tally device.">Sync Proxy</button>
           <button type="submit">Save</button>
         </menu>
       </form>

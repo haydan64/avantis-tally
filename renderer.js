@@ -1,7 +1,8 @@
 const state = {
   snapshot: null,
   editorMode: 'add',
-  editingId: null
+  editingId: null,
+  scanResults: []
 };
 
 const statusEl = document.getElementById('console-status');
@@ -14,6 +15,13 @@ const disconnectButtonEl = document.getElementById('disconnect-button');
 
 const tallyListEl = document.getElementById('tally-list');
 const addTallyEl = document.getElementById('add-tally');
+const syncTalliesEl = document.getElementById('sync-tallies');
+
+const syncModalEl = document.getElementById('sync-modal');
+const syncFormEl = document.getElementById('sync-form');
+const syncDeviceListEl = document.getElementById('sync-device-list');
+const syncRescanEl = document.getElementById('sync-rescan');
+const syncCloseEl = document.getElementById('sync-close');
 
 const consoleModalEl = document.getElementById('console-modal');
 const consoleFormEl = document.getElementById('console-form');
@@ -23,12 +31,17 @@ const tallyConnectionModalEl = document.getElementById('tally-connection-modal')
 const tallyConnectionFormEl = document.getElementById('tally-connection-form');
 const tallyConnectionCancelEl = document.getElementById('tally-connection-cancel');
 
+const tallyColorsModalEl = document.getElementById('tally-colors-modal');
+const tallyColorsFormEl = document.getElementById('tally-colors-form');
+const tallyColorsCancelEl = document.getElementById('tally-colors-cancel');
+
 const editorEl = document.getElementById('tally-editor');
 const editorTitleEl = document.getElementById('editor-title');
+const editorMacEl = document.getElementById('editor-mac');
 const editorFormEl = document.getElementById('editor-form');
 const editorCancelEl = document.getElementById('editor-cancel');
-const editorSyncEl = document.getElementById('editor-sync');
 const editorDeleteEl = document.getElementById('editor-delete');
+const deviceFieldEl = document.getElementById('device-field');
 const deviceSelectEl = document.getElementById('device-select');
 const channelTypeEl = document.getElementById('channel-type');
 const channelIndexEl = document.getElementById('channel-index');
@@ -40,6 +53,33 @@ function escapeHtml(input) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function normalizeColor(value, fallback) {
+  const text = String(value || '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) {
+    return text.toLowerCase();
+  }
+
+  if (/^[0-9a-fA-F]{6}$/.test(text)) {
+    return `#${text.toLowerCase()}`;
+  }
+
+  return fallback;
+}
+
+function normalizeMac(value) {
+  const raw = String(value || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+  if (raw.length !== 12) {
+    return '';
+  }
+
+  const parts = [];
+  for (let i = 0; i < 12; i += 2) {
+    parts.push(raw.slice(i, i + 2));
+  }
+
+  return parts.join(':');
 }
 
 function parseChannelKey(value) {
@@ -67,11 +107,81 @@ function getThresholdPercent(tally) {
     return Math.max(0, Math.min(100, legacy <= 1 ? legacy * 100 : legacy));
   }
 
-  return 0;
+  return 5;
 }
 
 function buildChannelTypeOptions(snapshot) {
   return Array.isArray(snapshot?.channelCatalog) ? snapshot.channelCatalog : [];
+}
+
+function getTallyColors(snapshot) {
+  const colors = snapshot?.tallyColors || {};
+  return {
+    active: normalizeColor(colors.active, '#ff0000'),
+    belowThreshold: normalizeColor(colors.belowThreshold, '#00ff00'),
+    muted: normalizeColor(colors.muted, '#00008b')
+  };
+}
+
+function getKnownMacs(snapshot = state.snapshot) {
+  if (!snapshot) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      (snapshot.tallyLights || [])
+        .map((item) => normalizeMac(item.deviceId))
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function getTallyStatus(tally, snapshot) {
+  const device = snapshot.devices.find((d) => d.id === tally.deviceId);
+  if (!device) {
+    return {
+      key: 'disconnected',
+      label: 'Disconnected',
+      color: '#475569',
+      device
+    };
+  }
+
+  const colors = getTallyColors(snapshot);
+  const fader = snapshot.faders[tally.channelKey] || { level: 0, muted: true };
+  const thresholdPercent = getThresholdPercent(tally);
+
+  if (fader.muted) {
+    return {
+      key: 'muted',
+      label: 'Muted',
+      color: colors.muted,
+      fader,
+      thresholdPercent,
+      device
+    };
+  }
+
+  if ((fader.level || 0) > thresholdPercent / 100) {
+    return {
+      key: 'active',
+      label: 'Active',
+      color: colors.active,
+      fader,
+      thresholdPercent,
+      device
+    };
+  }
+
+  return {
+    key: 'below-threshold',
+    label: 'Below Threshold',
+    color: colors.belowThreshold,
+    fader,
+    thresholdPercent,
+    device
+  };
 }
 
 function populateChannelTypeSelect(snapshot, selectedType = 'input') {
@@ -146,27 +256,25 @@ function applyState(snapshot) {
   errorTextEl.textContent = errorLines.join(' | ');
 
   renderUnifiedList(snapshot);
-  refillDeviceSelect(snapshot.devices);
+  refillDeviceSelect(snapshot);
+  renderSyncResults();
 }
 
 function renderUnifiedList(snapshot) {
   tallyListEl.innerHTML = '';
 
-  const assignedDeviceIds = new Set(snapshot.tallyLights.map((tally) => tally.deviceId).filter(Boolean));
-
-  if (snapshot.tallyLights.length === 0 && snapshot.devices.length === 0) {
+  if (snapshot.tallyLights.length === 0) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = 'No tally lights configured and no WebSocket devices connected.';
+    li.textContent = 'No tally lights configured. Use Sync Tally Lights to add a hardware device first.';
     tallyListEl.appendChild(li);
     return;
   }
 
   for (const tally of snapshot.tallyLights) {
-    const fader = snapshot.faders[tally.channelKey] || { level: 0, muted: true };
-    const thresholdPercent = getThresholdPercent(tally);
-    const on = !fader.muted && fader.level > thresholdPercent / 100;
-    const device = snapshot.devices.find((d) => d.id === tally.deviceId);
+    const status = getTallyStatus(tally, snapshot);
+    const fader = status.fader || { level: 0, muted: true };
+    const thresholdPercent = Number.isFinite(status.thresholdPercent) ? status.thresholdPercent : getThresholdPercent(tally);
 
     const li = document.createElement('li');
     li.className = 'tally-item';
@@ -174,10 +282,10 @@ function renderUnifiedList(snapshot) {
       <div class="tally-main">
         <div class="name-row">
           <span class="name">${escapeHtml(tally.name)}</span>
-          <span class="light ${on ? 'on' : 'off'}">${on ? 'ON' : 'OFF'}</span>
+          <span class="light status-${escapeHtml(status.key)}" style="--status-color: ${escapeHtml(status.color)}">${escapeHtml(status.label)}</span>
         </div>
         <div class="meta">
-          <span>Device: ${escapeHtml(device?.name || tally.deviceId || 'Unassigned')} ${device?.mac ? '(' + escapeHtml(device.mac) + ')' : ''}</span>
+          <span>MAC: ${escapeHtml(tally.deviceId)}</span>
           <span>Channel: ${escapeHtml(tally.channelKey)}</span>
           <span>Threshold: ${Math.round(thresholdPercent)}%</span>
           <span>Level: ${Math.round((fader.level || 0) * 100)}%</span>
@@ -186,33 +294,6 @@ function renderUnifiedList(snapshot) {
       </div>
       <div class="actions">
         <button data-action="edit" data-id="${tally.id}">Edit</button>
-        <button data-action="sync" data-id="${tally.id}" title="Sends tally connection settings to the selected tally device.">Sync Proxy</button>
-      </div>
-    `;
-
-    tallyListEl.appendChild(li);
-  }
-
-  for (const device of snapshot.devices) {
-    if (assignedDeviceIds.has(device.id)) {
-      continue;
-    }
-
-    const li = document.createElement('li');
-    li.className = 'device-item';
-    li.innerHTML = `
-      <div class="tally-main">
-        <div class="name-row">
-          <span class="name">${escapeHtml(device.name)}</span>
-          <span class="light off">UNASSIGNED</span>
-        </div>
-        <div class="meta">
-          <span>MAC: ${escapeHtml(device.mac || 'Unknown')}</span>
-          <span>Address: ${escapeHtml(device.address || 'Unknown')}</span>
-        </div>
-      </div>
-      <div class="actions">
-        <button data-action="add-for-device" data-device-id="${device.id}">Add Tally</button>
       </div>
     `;
 
@@ -220,23 +301,24 @@ function renderUnifiedList(snapshot) {
   }
 }
 
-function refillDeviceSelect(devices) {
+function refillDeviceSelect(snapshot) {
   const previous = editorFormEl.elements.deviceId.value;
+  const knownMacs = getKnownMacs(snapshot);
   deviceSelectEl.innerHTML = '';
 
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = devices.length > 0 ? 'Select a connected device' : 'No connected devices';
+  placeholder.textContent = knownMacs.length > 0 ? 'Select a provisioned MAC' : 'No provisioned tally devices';
   deviceSelectEl.appendChild(placeholder);
 
-  for (const device of devices) {
+  for (const mac of knownMacs) {
     const option = document.createElement('option');
-    option.value = device.id;
-    option.textContent = `${device.name}${device.mac ? ` (${device.mac})` : ` (${device.id})`}`;
+    option.value = mac;
+    option.textContent = mac;
     deviceSelectEl.appendChild(option);
   }
 
-  if (previous) {
+  if (previous && knownMacs.includes(previous)) {
     editorFormEl.elements.deviceId.value = previous;
   }
 }
@@ -268,20 +350,106 @@ function openTallyConnectionModal(snapshot = state.snapshot) {
   }
 }
 
+function openTallyColorsModal(snapshot = state.snapshot) {
+  if (!snapshot) {
+    return;
+  }
+
+  const colors = getTallyColors(snapshot);
+  tallyColorsFormEl.elements.active.value = colors.active;
+  tallyColorsFormEl.elements.belowThreshold.value = colors.belowThreshold;
+  tallyColorsFormEl.elements.muted.value = colors.muted;
+
+  if (!tallyColorsModalEl.open) {
+    tallyColorsModalEl.showModal();
+  }
+}
+
+async function scanBeacons() {
+  syncDeviceListEl.innerHTML = '<p class="sync-note">Scanning serial ports...</p>';
+  const response = await window.avantisApi.scanTallyBeacons();
+  state.scanResults = Array.isArray(response?.results) ? response.results : [];
+  renderSyncResults();
+}
+
+function renderSyncResults() {
+  if (!syncDeviceListEl) {
+    return;
+  }
+
+  const results = state.scanResults || [];
+  syncDeviceListEl.innerHTML = '';
+
+  if (!results.length) {
+    const empty = document.createElement('p');
+    empty.className = 'sync-note';
+    empty.textContent = 'No tally beacons detected.';
+    syncDeviceListEl.appendChild(empty);
+    return;
+  }
+
+  const known = new Set(getKnownMacs());
+
+  for (const item of results) {
+    const row = document.createElement('div');
+    row.className = 'sync-row';
+
+    const supported = Boolean(item.supported && item.mac);
+    const alreadyAdded = supported && known.has(item.mac);
+    const actionLabel = alreadyAdded ? 'Sync' : 'Add';
+    const reason = supported ? (alreadyAdded ? 'Already added' : 'Ready') : (item.reason || 'Unsupported');
+
+    row.innerHTML = `
+      <div class="sync-main">
+        <div><strong>${escapeHtml(item.mac || 'Unknown MAC')}</strong></div>
+        <div class="meta">
+          <span>Port: ${escapeHtml(item.port || 'Unknown')}</span>
+          <span>Model: ${escapeHtml(item.model || '(empty)')}</span>
+          <span>FW: ${escapeHtml(item.fw || '(empty)')}</span>
+          <span>Status: ${escapeHtml(reason)}</span>
+        </div>
+      </div>
+      <div class="actions">
+        ${supported ? `<button data-action="provision" data-port="${escapeHtml(item.port)}" data-mac="${escapeHtml(item.mac)}">${actionLabel}</button>` : ''}
+      </div>
+    `;
+
+    syncDeviceListEl.appendChild(row);
+  }
+}
+
+async function openSyncModal() {
+  if (!syncModalEl.open) {
+    syncModalEl.showModal();
+  }
+
+  await scanBeacons();
+}
+
 function openTallyEditor(mode, tally = null, preferredDeviceId = '') {
   state.editorMode = mode;
   state.editingId = tally?.id || null;
 
   editorTitleEl.textContent = mode === 'add' ? 'Add Tally Light' : 'Edit Tally Light';
-  editorSyncEl.hidden = mode === 'add';
   editorDeleteEl.hidden = mode === 'add';
 
   const parsedChannel = parseChannelKey(tally?.channelKey || 'input:1');
+  const selectedMac = normalizeMac(tally?.deviceId || preferredDeviceId);
 
   editorFormEl.elements.id.value = tally?.id || '';
-  editorFormEl.elements.name.value = tally?.name || 'Tally Light';
-  editorFormEl.elements.deviceId.value = tally?.deviceId || preferredDeviceId;
+  editorFormEl.elements.name.value = tally?.name || selectedMac || 'Tally Light';
+  editorFormEl.elements.deviceId.value = selectedMac;
   editorFormEl.elements.activeThresholdPercent.value = String(Math.round(getThresholdPercent(tally)));
+
+  if (mode === 'edit') {
+    deviceFieldEl.hidden = true;
+    editorMacEl.hidden = false;
+    editorMacEl.textContent = `MAC: ${selectedMac || 'Unknown'}`;
+  } else {
+    deviceFieldEl.hidden = false;
+    editorMacEl.hidden = true;
+    editorMacEl.textContent = '';
+  }
 
   populateChannelTypeSelect(state.snapshot, parsedChannel.type);
   populateChannelIndexSelect(state.snapshot, channelTypeEl.value, parsedChannel.key);
@@ -313,8 +481,25 @@ async function handleMenuAction(action) {
     return;
   }
 
+  if (action === 'open-tally-color-modal') {
+    openTallyColorsModal();
+    return;
+  }
+
   if (action === 'open-add-tally') {
+    if (getKnownMacs().length === 0) {
+      await window.avantisApi.showInfo({
+        title: 'No Provisioned Devices',
+        message: 'Use Sync Tally Lights first so a hardware MAC is provisioned and added.'
+      });
+      return;
+    }
     openTallyEditor('add');
+    return;
+  }
+
+  if (action === 'open-sync-modal') {
+    await openSyncModal();
   }
 }
 
@@ -341,7 +526,69 @@ async function boot() {
     populateChannelIndexSelect(state.snapshot, channelTypeEl.value);
   });
 
-  addTallyEl.addEventListener('click', () => openTallyEditor('add'));
+  addTallyEl.addEventListener('click', async () => {
+    if (getKnownMacs().length === 0) {
+      await window.avantisApi.showInfo({
+        title: 'No Provisioned Devices',
+        message: 'Use Sync Tally Lights first so a hardware MAC is provisioned and added.'
+      });
+      return;
+    }
+
+    openTallyEditor('add');
+  });
+
+  syncTalliesEl.addEventListener('click', async () => {
+    try {
+      await openSyncModal();
+    } catch (error) {
+      await window.avantisApi.showError({ message: error.message });
+    }
+  });
+
+  syncRescanEl.addEventListener('click', async (event) => {
+    event.preventDefault();
+    try {
+      await scanBeacons();
+    } catch (error) {
+      await window.avantisApi.showError({ message: error.message });
+    }
+  });
+
+  syncCloseEl.addEventListener('click', (event) => {
+    event.preventDefault();
+    syncModalEl.close();
+  });
+
+  syncDeviceListEl.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    if (target.dataset.action !== 'provision') {
+      return;
+    }
+
+    const port = String(target.dataset.port || '').trim();
+    const mac = normalizeMac(target.dataset.mac);
+    if (!port || !mac) {
+      return;
+    }
+
+    target.disabled = true;
+    try {
+      const response = await window.avantisApi.provisionTallyDevice({ port, mac });
+      if (response?.snapshot) {
+        applyState(response.snapshot);
+      }
+      await scanBeacons();
+    } catch (error) {
+      await window.avantisApi.showError({ message: error.message });
+    } finally {
+      target.disabled = false;
+    }
+  });
 
   disconnectButtonEl.addEventListener('click', async () => {
     await window.avantisApi.disconnectConsole();
@@ -384,15 +631,26 @@ async function boot() {
     tallyConnectionModalEl.close();
   });
 
+  tallyColorsFormEl.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    await window.avantisApi.saveTallyColors({
+      active: tallyColorsFormEl.elements.active.value,
+      belowThreshold: tallyColorsFormEl.elements.belowThreshold.value,
+      muted: tallyColorsFormEl.elements.muted.value
+    });
+
+    tallyColorsModalEl.close();
+  });
+
+  tallyColorsCancelEl.addEventListener('click', (event) => {
+    event.preventDefault();
+    tallyColorsModalEl.close();
+  });
+
   tallyListEl.addEventListener('click', async (event) => {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement) || !state.snapshot) {
-      return;
-    }
-
-    const addForDevice = target.dataset.deviceId;
-    if (target.dataset.action === 'add-for-device' && addForDevice) {
-      openTallyEditor('add', null, addForDevice);
       return;
     }
 
@@ -409,15 +667,6 @@ async function boot() {
 
     if (action === 'edit') {
       openTallyEditor('edit', tally);
-      return;
-    }
-
-    if (action === 'sync') {
-      try {
-        await window.avantisApi.syncTally({ id });
-      } catch (error) {
-        await window.avantisApi.showError({ message: error.message });
-      }
     }
   });
 
@@ -429,7 +678,7 @@ async function boot() {
       name: editorFormEl.elements.name.value,
       deviceId: editorFormEl.elements.deviceId.value,
       channelKey: channelIndexEl.value,
-      activeThresholdPercent: Number(editorFormEl.elements.activeThresholdPercent.value || 0)
+      activeThresholdPercent: Number(editorFormEl.elements.activeThresholdPercent.value || 5)
     };
 
     try {
@@ -458,17 +707,8 @@ async function boot() {
     closeTallyEditor();
   });
 
-  editorSyncEl.addEventListener('click', async (event) => {
+  syncFormEl.addEventListener('submit', (event) => {
     event.preventDefault();
-    if (!state.editingId) {
-      return;
-    }
-
-    try {
-      await window.avantisApi.syncTally({ id: state.editingId });
-    } catch (error) {
-      await window.avantisApi.showError({ message: error.message });
-    }
   });
 
   const snapshot = await window.avantisApi.getState();

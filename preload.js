@@ -6,11 +6,14 @@ contextBridge.exposeInMainWorld('avantisApi', {
   disconnectConsole: () => ipcRenderer.invoke('console:disconnect'),
   saveTallyConnection: (payload) => ipcRenderer.invoke('tally-connection:save', payload),
   saveProxy: (payload) => ipcRenderer.invoke('tally-connection:save', payload),
+  saveTallyColors: (payload) => ipcRenderer.invoke('tally-colors:save', payload),
   addTally: (payload) => ipcRenderer.invoke('tally:add', payload),
   updateTally: (payload) => ipcRenderer.invoke('tally:update', payload),
   removeTally: (payload) => ipcRenderer.invoke('tally:remove', payload),
-  syncTally: (payload) => ipcRenderer.invoke('tally:sync', payload),
+  scanTallyBeacons: () => ipcRenderer.invoke('tally:scan-beacons'),
+  provisionTallyDevice: (payload) => ipcRenderer.invoke('tally:provision-device', payload),
   showError: (payload) => ipcRenderer.invoke('dialog:error', payload),
+  showInfo: (payload) => ipcRenderer.invoke('dialog:info', payload),
   onState: (listener) => {
     const wrapped = (_event, state) => listener(state);
     ipcRenderer.on('app-state', wrapped);
