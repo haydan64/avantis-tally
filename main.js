@@ -664,6 +664,10 @@ app.whenReady().then(() => {
   const persisted = getPersistedState();
 
   avantisClient.setBaseMidiChannel(persisted.console.baseMidiChannel);
+  if (persisted.console.address) {
+    runtimeState.connectError = '';
+    avantisClient.connect(persisted.console.address, persisted.console.port);
+  }
 
   tallyManager = new TallyManager(persisted.websocketPort, {
     isDeviceAllowed: (mac) => isProvisionedDevice(mac)
