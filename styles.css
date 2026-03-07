@@ -8,6 +8,9 @@
   --off: #475569;
   --error: #f97316;
   --accent: #0ea5e9;
+  --tally-active: #ff0000;
+  --tally-below-threshold: #00ff00;
+  --tally-muted: #00008b;
 }
 
 * {
@@ -188,8 +191,19 @@ button:hover {
 .light.status-active,
 .light.status-below-threshold,
 .light.status-muted {
-  background: var(--status-color, #334155);
   color: #020617;
+}
+
+.light.status-active {
+  background: var(--tally-active);
+}
+
+.light.status-below-threshold {
+  background: var(--tally-below-threshold);
+}
+
+.light.status-muted {
+  background: var(--tally-muted);
 }
 
 .light.status-disconnected {

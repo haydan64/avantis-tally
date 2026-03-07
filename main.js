@@ -27,6 +27,8 @@ let mainWindow = null;
 let rendererReady = false;
 let statusResyncTimer = null;
 const pendingMenuActions = [];
+let resyncInProgress = false;
+let resyncQueued = false;
 
 let runtimeState = {
   connected: false,
@@ -260,11 +262,23 @@ function getLocalLanAddress() {
 }
 
 async function resyncAllTallyStatuses() {
+  resyncQueued = true;
+  if (resyncInProgress) {
+    return;
+  }
+
+  resyncInProgress = true;
+
   try {
-    await syncAllTallyOutputs();
+    while (resyncQueued) {
+      resyncQueued = false;
+      await syncAllTallyOutputs();
+    }
   } catch (error) {
     runtimeState.websocketError = error?.message ? String(error.message) : 'Failed to resync tally status.';
     broadcastState();
+  } finally {
+    resyncInProgress = false;
   }
 }
 
@@ -427,7 +441,11 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      webSecurity: true,
+      allowRunningInsecureContent: false
     }
   });
 
@@ -589,7 +607,8 @@ function registerIpc() {
       timeoutMs: 2000,
       baudRate: 115200,
       supportedModel: SUPPORTED_TALLY_MODEL,
-      supportedFirmwarePrefix: SUPPORTED_FIRMWARE_PREFIX
+      supportedFirmwarePrefix: SUPPORTED_FIRMWARE_PREFIX,
+      concurrency: 4
     });
 
     return {

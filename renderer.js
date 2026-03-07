@@ -123,6 +123,34 @@ function getTallyColors(snapshot) {
   };
 }
 
+function applyTallyColorTheme(snapshot) {
+  const colors = getTallyColors(snapshot);
+
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+
+    if (!rules) {
+      continue;
+    }
+
+    for (const rule of Array.from(rules)) {
+      if (rule.type !== CSSRule.STYLE_RULE || rule.selectorText !== ':root') {
+        continue;
+      }
+
+      rule.style.setProperty('--tally-active', colors.active);
+      rule.style.setProperty('--tally-below-threshold', colors.belowThreshold);
+      rule.style.setProperty('--tally-muted', colors.muted);
+      return;
+    }
+  }
+}
+
 function getKnownMacs(snapshot = state.snapshot) {
   if (!snapshot) {
     return [];
@@ -138,19 +166,21 @@ function getKnownMacs(snapshot = state.snapshot) {
 }
 
 function getTallyStatus(tally, snapshot) {
+  const fader = snapshot.faders[tally.channelKey] || { level: 0, muted: true };
+  const thresholdPercent = getThresholdPercent(tally);
   const device = snapshot.devices.find((d) => d.id === tally.deviceId);
   if (!device) {
     return {
       key: 'disconnected',
       label: 'Disconnected',
       color: '#475569',
+      fader,
+      thresholdPercent,
       device
     };
   }
 
   const colors = getTallyColors(snapshot);
-  const fader = snapshot.faders[tally.channelKey] || { level: 0, muted: true };
-  const thresholdPercent = getThresholdPercent(tally);
 
   if (fader.muted) {
     return {
@@ -255,6 +285,7 @@ function applyState(snapshot) {
   }
   errorTextEl.textContent = errorLines.join(' | ');
 
+  applyTallyColorTheme(snapshot);
   renderUnifiedList(snapshot);
   refillDeviceSelect(snapshot);
   renderSyncResults();
@@ -282,7 +313,7 @@ function renderUnifiedList(snapshot) {
       <div class="tally-main">
         <div class="name-row">
           <span class="name">${escapeHtml(tally.name)}</span>
-          <span class="light status-${escapeHtml(status.key)}" style="--status-color: ${escapeHtml(status.color)}">${escapeHtml(status.label)}</span>
+          <span class="light status-${escapeHtml(status.key)}">${escapeHtml(status.label)}</span>
         </div>
         <div class="meta">
           <span>MAC: ${escapeHtml(tally.deviceId)}</span>
@@ -617,13 +648,17 @@ async function boot() {
   tallyConnectionFormEl.addEventListener('submit', async (event) => {
     event.preventDefault();
 
-    await window.avantisApi.saveTallyConnection({
-      proxyAddress: tallyConnectionFormEl.elements.proxyAddress.value,
-      wifiSsid: tallyConnectionFormEl.elements.wifiSsid.value,
-      wifiPassword: tallyConnectionFormEl.elements.wifiPassword.value
-    });
+    try {
+      await window.avantisApi.saveTallyConnection({
+        proxyAddress: tallyConnectionFormEl.elements.proxyAddress.value,
+        wifiSsid: tallyConnectionFormEl.elements.wifiSsid.value,
+        wifiPassword: tallyConnectionFormEl.elements.wifiPassword.value
+      });
 
-    tallyConnectionModalEl.close();
+      tallyConnectionModalEl.close();
+    } catch (error) {
+      await window.avantisApi.showError({ message: error.message });
+    }
   });
 
   tallyConnectionCancelEl.addEventListener('click', (event) => {
@@ -634,13 +669,17 @@ async function boot() {
   tallyColorsFormEl.addEventListener('submit', async (event) => {
     event.preventDefault();
 
-    await window.avantisApi.saveTallyColors({
-      active: tallyColorsFormEl.elements.active.value,
-      belowThreshold: tallyColorsFormEl.elements.belowThreshold.value,
-      muted: tallyColorsFormEl.elements.muted.value
-    });
+    try {
+      await window.avantisApi.saveTallyColors({
+        active: tallyColorsFormEl.elements.active.value,
+        belowThreshold: tallyColorsFormEl.elements.belowThreshold.value,
+        muted: tallyColorsFormEl.elements.muted.value
+      });
 
-    tallyColorsModalEl.close();
+      tallyColorsModalEl.close();
+    } catch (error) {
+      await window.avantisApi.showError({ message: error.message });
+    }
   });
 
   tallyColorsCancelEl.addEventListener('click', (event) => {

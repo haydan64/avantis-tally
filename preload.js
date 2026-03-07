@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('avantisApi', {
   saveConsole: (payload) => ipcRenderer.invoke('console:save', payload),
   disconnectConsole: () => ipcRenderer.invoke('console:disconnect'),
   saveTallyConnection: (payload) => ipcRenderer.invoke('tally-connection:save', payload),
-  saveProxy: (payload) => ipcRenderer.invoke('tally-connection:save', payload),
+  saveProxy: (payload) => ipcRenderer.invoke('proxy:save', payload),
   saveTallyColors: (payload) => ipcRenderer.invoke('tally-colors:save', payload),
   addTally: (payload) => ipcRenderer.invoke('tally:add', payload),
   updateTally: (payload) => ipcRenderer.invoke('tally:update', payload),
